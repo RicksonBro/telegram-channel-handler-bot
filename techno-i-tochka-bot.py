@@ -1,4 +1,3 @@
-import time
 import openpyxl
 import telebot
 from telebot import types
@@ -7,24 +6,22 @@ bot = telebot.TeleBot('6835896919:AAFOgrmeuuGGBWogym_aU5sqsHHseN-ay6Y')
 channel_id = "-1001371818863"
 excel_file_path = "products.xlsx"
 
-products = []
-medias = []
-itera = 0
+user_data = {}
 
 @bot.message_handler(commands=['start'])
 def start(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    add_posts = types.KeyboardButton('Добавить посты')
-    send_post_button = types.KeyboardButton('Отправить пост')
+    send_post_button = types.KeyboardButton('📢Отправить пост')
     show_template_button = types.KeyboardButton('Показать шаблон')
-    update_post_button = types.KeyboardButton('Обновить шаблон')
-    delete_history_button = types.KeyboardButton('Очистить историю')
-    markup.add(delete_history_button)
-    markup.add(add_posts)
+    update_template_button = types.KeyboardButton('🔄Обновить шаблон')
     markup.add(send_post_button)
-    markup.add(update_post_button)
-    markup.add(show_template_button)
-    bot.send_message(message.chat.id, f"Здравствуйте!", parse_mode='markdown', reply_markup=markup)
+    markup.add(update_template_button, show_template_button)
+    bot.send_message(message.chat.id, f"Здравствуйте!\nЧтобы начать работу отправьте <b>excel</b> файл.\nВведите <b>/help</b> для более подробной информации", parse_mode='html', reply_markup=markup)
+    user_data[message.chat.id] = {'products': [], 'medias': [], 'itera': 0}
+
+@bot.message_handler(commands=['help'])
+def help(message):
+    bot.send_message(message.chat.id, f"Чтобы создать пост отправьте excel файл с данными. После чего отправьте фото к посту и затем нажмите 📢<b>Отправить пост</b>. Бот будет запрашивать фото столько раз сколько кол-во строк в excel файле с данными о товарах.\n📢<b>Отправить пост</b> - Отправляет пост в канал, если есть excel данные и фото\n<b>Показать шаблон</b> - Показывает текущий шаблон поста\n🔄<b>Обновить шаблон</b> - создать новый шаблон для постов\n<b>/delete_history</b> - сбросить данные екселя и о картинках", parse_mode='html')
 
 def read_excel(file_path):
     workbook = openpyxl.load_workbook(file_path)
@@ -39,10 +36,14 @@ def read_excel(file_path):
 
 @bot.message_handler(func=lambda message: message.text == 'Показать шаблон')
 def show_template(message):
-    with open(f'text.txt', 'rb') as template:
-        bot.send_message(message.chat.id, template)
+    with open(f'text.txt', 'r', encoding="utf8") as template:
+        post_text = ''
+        for char in template:
+            post_text += char
+        post_text = post_text.replace(r'\n', '\n')
+        bot.send_message(message.chat.id, post_text)
     
-@bot.message_handler(func=lambda message: message.text == 'Обновить шаблон')
+@bot.message_handler(func=lambda message: message.text == '🔄Обновить шаблон')
 def change_template(message):
     bot.send_message(message.chat.id, f"Напишите новый шаблон для постов", parse_mode='markdown')
     bot.register_next_step_handler(message, update_template)
@@ -50,6 +51,7 @@ def change_template(message):
 def update_template(message):
     try:
         new_templ = message.text
+        new_templ = new_templ.replace('\n', '\\n')
         filename = f"text.txt"
         with open(filename, 'w', encoding="utf8") as templ:
             templ.write(new_templ)
@@ -57,31 +59,15 @@ def update_template(message):
     except Exception as e:
         bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}")
 
-         
-# def post_text(product):
-#     return f"🎄ТЕХНО И ТОЧКА\n\n{product['Имя']} {product['Модель']}, {product['Цвет']} - {product['Цена']}руб\n\nПри Оплате Наличкой Скидка -5%\n\nГарантия 1 Год С Момента Выдачи Товара Клиенту\n\nДоступен К Покупке 🛍\n\n🟠 Не Забудь Подписаться И Поделится С Друзьями !!! ‼️\n[Канал](https://t.me/tehnomarik)\n\n🟠Пр.Строителей 98 ✅"
-
-# def send_post_with_photo(product, photo):
-#     post_text = create_post_text(product)
-#     bot.send_photo(channel_id, photo, caption=post_text, parse_mode='Markdown')
-
-
-@bot.message_handler(func=lambda message: message.text == 'Очистить историю')
+@bot.message_handler(commands=['delete_history'])
 def delete_history(message):
     try:
-        global products
-        global medias
-        global itera
-        products = []
-        medias = []
-        itera = 0
+        user_data[message.chat.id]['products'] = []
+        user_data[message.chat.id]['medias'] = []
+        user_data[message.chat.id]['itera'] = 0
         bot.send_message(message.chat.id, f"✅🗑История очищена!", parse_mode='html')
     except Exception as e:
         bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}")
-
-@bot.message_handler(func=lambda message: message.text == 'Добавить посты')
-def posts_handler(message):
-    bot.send_message(message.chat.id, f"Пожалуйста, отправьте <b>excel</b> файл с данными:", parse_mode='html')
 
 @bot.message_handler(content_types=['document'])
 def handle_document(message):
@@ -93,98 +79,74 @@ def handle_document(message):
         with open(temp_file_path, 'wb') as new_file:
             new_file.write(downloaded_file)
         global products
-        products = read_excel(temp_file_path)
-        bot.send_message(message.chat.id, f"Данные сохранены, отправьте картинки для товара {products[itera]['Название товара']}:")
-
-        # bot.register_next_step_handler(message, work_with_photo(message))
+        user_data[message.chat.id]['products'] = read_excel(temp_file_path)
+        bot.send_message(message.chat.id, f"Данные сохранены, отправьте картинки для товара {user_data[message.chat.id]['products'][user_data[message.chat.id]['itera']]['Название товара']}:")
         
     except Exception as e:
         bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}")
 
-@bot.message_handler(func=lambda message: message.text == 'Отправить пост')
+@bot.message_handler(func=lambda message: message.text == '📢Отправить пост')
 def send_post(message):
-    global medias
-    global products
-    global itera
-    if len(medias) == 0:
-        bot.send_message(message.chat.id, f"Вы не отправили картинки")
-    elif len(products) == 0:
-        bot.send_message(message.chat.id, f"Отстутсвуют данные excel файла")
+    user_id = message.chat.id
+    if len(user_data[user_id]['products']) == 0:
+        bot.send_message(user_id, f"Отстутсвуют данные excel файла")
+    elif len(user_data[user_id]['medias']) == 0:
+        bot.send_message(user_id, f"Вы не отправили картинки")
     else:
         with open('text.txt', 'r', encoding="utf8") as text:
             post_text = ''
             for char in text:
                 post_text += char
+
+        current_product = user_data[user_id]['products'][user_data[user_id]['itera']]
             
-            if products[itera]['Гарантия'] == None:
-                # post_text = post_text.replace(f"{{Гарантия}}", "")
-                # post_text = post_text.replace("Гарантия", "")
-                garant_i = post_text.index("Гарантия")
-                start = post_text.find(r"\nГарантия")
-                end = post_text.find(r"\n", garant_i, len(post_text) - 1) + 2
-                post_text = post_text.replace(post_text[start:end], "")
+        if current_product['Гарантия'] == None:
+            garant_i = post_text.index("Гарантия")
+            start = post_text.find(r"\nГарантия")
+            end = post_text.find(r"\n", garant_i, len(post_text) - 1) + 2
+            post_text = post_text.replace(post_text[start:end], "")
+        
+        if current_product['Цена со скидкой'] == None:
+            discount_i = post_text.index("При Оплате")
+            start = post_text.find(r"\nПри Оплате")
+            end = post_text.find(r"\n", discount_i, len(post_text) - 1) - 1
+            post_text = post_text.replace(post_text[start:end], "")
 
-                post_text = post_text.replace(r"\n", "\n")
-                medias[0].caption = post_text.format(Название_товара = products[itera]['Название товара'], Цена = products[itera]['Цена'], Цена_со_скидкой = products[itera]['Цена со скидкой'], Адрес = products[itera]['Адрес'])
-            else:
-                post_text = post_text.replace(r"\n", "\n")
-                medias[0].caption = post_text.format(Название_товара = products[itera]['Название товара'], Цена = products[itera]['Цена'], Цена_со_скидкой = products[itera]['Цена со скидкой'], Гарантия = products[itera]['Гарантия'], Адрес = products[itera]['Адрес'])
-        bot.send_media_group(channel_id, medias)
-        medias = []
-        if itera == len(products) - 1:
-            itera = 0
-            products = []
+        post_text = post_text.replace(r"\n", "\n")
+        user_data[user_id]['medias'][0].caption = post_text.format(
+            Название_товара=current_product['Название товара'],
+            Цена=current_product['Цена'],
+            Цена_со_скидкой=current_product['Цена со скидкой'],
+            Гарантия=current_product['Гарантия'],
+            Адрес=current_product['Адрес']
+        )
+        bot.send_media_group(channel_id, user_data[user_id]['medias'])
+        user_data[user_id]['medias'] = []
+
+        if user_data[user_id]['itera'] == len(user_data[user_id]['products']) - 1:
+            user_data[user_id]['itera'] = 0
+            user_data[user_id]['products'] = []
         else:
-            itera += 1
-            bot.send_message(message.chat.id, f"Отправьте картинки для товара {products[itera]['Название товара']}")
+            user_data[user_id]['itera'] += 1
+            bot.send_message(user_id, f"Отправьте картинки для товара <u>{user_data[user_id]['products'][user_data[user_id]['itera']]['Название товара']}</u>")
 
-def work_with_photo(message):
-    if message.photo:
-        handle_photo(message)
-    else:
-        bot.send_message(message.chat.id, "Вы не отправили картинку. Повторите отправку файла снова.")
+# def work_with_photo(message):
+#     user_id = message.chat.id
+#     if message.photo:
+#         handle_photo(user_id, message)
+#     else:
+#         bot.send_message(user_id, "Вы не отправили картинку. Повторите отправку файла снова.")
 
 
 @bot.message_handler(content_types=['photo'])
 def handle_photo(message):
     try:
-                # bot.send_message(message.chat.id, f"Пожалуйста, отправьте картинку для поста:")
-
-                # photo_message = bot.polling('photo', timeout=300)  # Ожидаем ответа с картинкой не более 5 минут
-                # time.sleep(20)
-                # print(message)
-                #     photo_info = message.photo[-1]
-                #     photo_file = bot.get_file(photo_info.file_id)
-
-                #     downloaded_photo = bot.download_file(photo_path)
-                #     temp_photo_path = "temp_photo.jpg"
-
-                #     with open(temp_photo_path, 'wb') as new_photo_file:
-                #         new_photo_file.write(downloaded_photo)
-                #     bot.send_photo(channel_id, temp_photo_path, caption=post_text(product), parse_mode='Markdown')
-                # elif content.startswith("!"):
-                    global medias
-                    global itera
-                    photo_id = message.photo[-1].file_id  # Берем самую большую картинку
-                        # photo_file = bot.get_file(photo_info.file_id)
-                        # photo_path = photo_file.file_path
-                        # print(photo_path)
-
-                        # downloaded_photo = bot.download_file(photo_path)
-                        # temp_photo_path = "temp_photo.jpg"
-
-                        # with open(temp_photo_path, 'wb') as new_photo_file:
-                        #     new_photo_file.write(downloaded_photo)
-                        # print(temp_photo_path)  
-                    # , caption=post_text(products[itera])
-                    medias.append(telebot.types.InputMediaPhoto(photo_id))
-
-                
-                    bot.send_message(message.chat.id, "Картинка добавлена")
+        user_id = message.chat.id
+        photo_id = message.photo[-1].file_id
+        user_data[user_id]['medias'].append(telebot.types.InputMediaPhoto(photo_id)) 
+        bot.send_message(user_id, "Картинка добавлена")
     except Exception as e:
-        bot.send_message(message.chat.id, f"Произошла ошибка: {str(e)}")
-
-# if (len(medias) > 0):
+        bot.send_message(user_id, f"Произошла ошибка: {str(e)}")
     
 
 if __name__ == "__main__":
